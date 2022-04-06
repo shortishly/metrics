@@ -16,14 +16,19 @@
 -module(metrics_config).
 
 
+-export([exposition/1]).
 -export([http/1]).
 -export([timeout/1]).
 
 
-timeout(Name) ->
+timeout(#{name := Name, default := Default}) ->
     envy(to_integer,
          metrics_util:snake_case([Name, timeout]),
-         timer:minutes(1)).
+         Default);
+
+timeout(#{name := _} = Arg) ->
+    ?FUNCTION_NAME(Arg#{default => timer:minutes(1)}).
+
 
 http(port = Name) ->
     envy(to_integer,
@@ -31,16 +36,32 @@ http(port = Name) ->
          8080).
 
 
-envy(To, Name, Default) ->
-    envy:To(case application:get_application() of
-                {ok, Application} ->
-                    Application;
+exposition(instance = Name) ->
+    envy(to_list,
+         metrics_util:snake_case([?FUNCTION_NAME, Name]),
+         begin
+             {ok, Hostname} = inet:gethostname(),
+             Hostname
+         end);
 
-                undefined ->
-                    error(application)
-            end,
-            Name,
-            default(Default)).
+exposition(job = Name) ->
+    envy(to_list,
+         metrics_util:snake_case([?FUNCTION_NAME, Name]),
+         get_application()).
+
+
+envy(To, Name, Default) ->
+    envy:To(get_application(), Name, default(Default)).
+
+
+get_application() ->
+    case application:get_application() of
+        {ok, Application} ->
+            Application;
+
+        undefined ->
+            metrics
+    end.
 
 
 default(Default) ->

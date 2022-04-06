@@ -15,13 +15,13 @@
 
 -module(metrics).
 
-
 -export([all/0]).
 -export([callback_mode/0]).
 -export([counter_add/1]).
 -export([domain/2]).
 -export([exposition/1]).
 -export([gauge_add/1]).
+-export([gauge_put/1]).
 -export([gauge_sub/1]).
 -export([handle_event/4]).
 -export([histogram/1]).
@@ -33,16 +33,33 @@
 -include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 
 domain(LogEvent, Extra) ->
     erlang:display(#{log_event => LogEvent, extra => Extra}),
     log.
 
+ji(Label) ->
+    maps:merge(
+      Label,
+      lists:foldl(
+        fun
+            (Name, A) ->
+                A#{Name => metrics_config:exposition(Name)}
+        end,
+        #{},
+        [job, instance])).
+
 
 histogram(#{name := Name, label := Label, value := Value} = Arg) ->
     ?LOG_DEBUG(#{arg => Arg}),
 
-    case ets:lookup(?MODULE, {Name, Label}) of
+    JI = ji(Label),
+
+    case ets:lookup(?MODULE, {Name, JI}) of
         [{_, #{type := histogram,
                buckets := Buckets,
                sum := Sum,
@@ -60,7 +77,7 @@ histogram(#{name := Name, label := Label, value := Value} = Arg) ->
             Sum = atomics:new(1, [{signed, false}]),
             ok = histogram_update(Counter, Buckets, Infinity, Sum, Value),
 
-            NameLabel = {{Name, Label},
+            NameLabel = {{Name, JI},
                          #{type => histogram,
                            buckets => Buckets,
                            sum => Sum,
@@ -121,6 +138,19 @@ histogram_update_buckets(Counter, Buckets, Value) ->
         lists:zip(lists:seq(1, length(Buckets)), Buckets))).
 
 
+gauge_put(#{name := _, label := _, value := Value} = Arg) ->
+    observation(Arg#{type => gauge,
+                     op => put(#{ix => 1, value => Value})}),
+    ok;
+
+gauge_put([Observation | Observations]) ->
+    ?FUNCTION_NAME(Observation),
+    ?FUNCTION_NAME(Observations);
+
+gauge_put([]) ->
+    ok.
+
+
 gauge_add(#{name := _, label := _, value := Value} = Arg) ->
     observation(Arg#{type => gauge,
                      op => add(#{ix => 1, value => Value})}),
@@ -152,7 +182,9 @@ observation(#{name := Name,
               label := Label,
               type := Type,
               op := Op} = Arg) ->
-    case ets:lookup(?MODULE, {Name, Label}) of
+    JI = ji(Label),
+
+    case ets:lookup(?MODULE, {Name, JI}) of
         [{_, #{type := Type, counter := Counter}}] ->
             ok = Op(Counter);
 
@@ -167,14 +199,14 @@ observation(#{name := Name,
               ?MODULE,
               case ets:lookup(?MODULE, Name) of
                   [{_, Type}] ->
-                      {{Name, Label}, #{type => Type, counter => Counter}};
+                      {{Name, JI}, #{type => Type, counter => Counter}};
 
                   [{_, _}] ->
                       error(type_mismatch);
 
                   [] ->
                       [{Name, Type},
-                       {{Name, Label}, #{type => Type, counter => Counter}}]
+                       {{Name, JI}, #{type => Type, counter => Counter}}]
               end) orelse ?FUNCTION_NAME(Arg)
     end.
 
@@ -190,7 +222,9 @@ float64(I) when is_integer(I) ->
 
 
 value(#{name := Name, label := Label}) ->
-    case ets:lookup(?MODULE, {Name, Label}) of
+    JI = ji(Label),
+
+    case ets:lookup(?MODULE, {Name, JI}) of
         [{_,
           #{type := histogram,
             buckets := Buckets,
@@ -214,7 +248,7 @@ value(#{name := Name, label := Label}) ->
             counters:get(Counter, 1);
 
         [] ->
-            error(badarg, [#{name => Name, label => Label}])
+            error(badarg, [#{name => Name, label => JI}])
     end.
 
 
@@ -223,7 +257,9 @@ info(#{name := _, label := _} = Arg) ->
 
 
 op(#{name := Name, label := Label, apply := Apply}) ->
-    case ets:lookup(?MODULE, {Name, Label}) of
+    JI = ji(Label),
+
+    case ets:lookup(?MODULE, {Name, JI}) of
         [{_, #{counter := Counter}}] ->
             Apply(Counter);
 
@@ -243,6 +279,13 @@ with_name(Name) ->
 
 select(Pattern) ->
     ets:select(?MODULE, Pattern).
+
+
+put(#{ix := Ix, value := Value}) ->
+    fun
+        (Counter) ->
+            counters:put(Counter, Ix, Value)
+    end.
 
 
 add(#{ix := Ix, value := Value}) ->
@@ -286,7 +329,7 @@ start_link() ->
 
 init([]) ->
     ?MODULE = ets:new(?MODULE, [ordered_set, named_table, public]),
-    {ok, ready, #{}, nei(collect)}.
+    {ok, ready, #{}, metrics_statem:nei(collect)}.
 
 
 callback_mode() ->
@@ -307,24 +350,16 @@ handle_event(internal, collect, _, _) ->
      lists:foldl(
        fun
            (MediaType, A) ->
-               [nei({collect, MediaType}) | A]
+               [metrics_statem:nei({collect, MediaType}) | A]
        end,
-       [generic_timeout(collect)],
+       [metrics_statem:generic_timeout(#{name => collect})],
        media_types())};
 
 handle_event(internal, {collect, MediaType}, _, Data) ->
     {keep_state, Data#{MediaType => as(MediaType)}};
 
 handle_event({timeout, _}, collect, _, _) ->
-    {keep_state_and_data, nei(collect)}.
-
-
-nei(Event) ->
-    {next_event, internal, Event}.
-
-
-generic_timeout(Name) ->
-    {{timeout, Name}, metrics_config:timeout(Name), Name}.
+    {keep_state_and_data, metrics_statem:nei(collect)}.
 
 
 media_types() ->
@@ -383,7 +418,7 @@ as(<<"text/plain; version=0.0.4">>) ->
       ?MODULE).
 
 
-nlv(#{name := Name, label := Label, value := Value} = Arg) ->
+nlv(#{name := Name, value := Value} = Arg) ->
     [case maps:find(suffix, Arg) of
          {ok, Suffix} ->
              io_lib:format("~p_~p", [Name, Suffix]);
@@ -391,15 +426,60 @@ nlv(#{name := Name, label := Label, value := Value} = Arg) ->
          error ->
              io_lib:format("~p", [Name])
      end,
-     "{",
+     l(Arg),
+     " ",
+     io_lib:format("~p", [Value]),
+     "\n"].
+
+l(#{label := Label}) when map_size(Label) > 0 ->
+    ["{",
      lists:join(
        ",",
        lists:map(
          fun
+             ({K, V}) when is_list(V) ->
+                 io_lib:format("~p=\"~s\"", [K, V]);
+
              ({K, V}) ->
                  io_lib:format("~p=\"~p\"", [K, V])
          end,
          lists:sort(maps:to_list(Label)))),
-     "} ",
-     io_lib:format("~p", [Value]),
-     "\n"].
+     "}"];
+
+l(_) ->
+    [].
+
+
+-ifdef(TEST).
+nlv_test_() ->
+    [?_assertEqual(
+        <<"abc 123\n">>,
+        iolist_to_binary(nlv(#{name => abc, label => #{}, value => 123}))),
+
+     ?_assertEqual(
+        <<"abc 123\n">>,
+        iolist_to_binary(nlv(#{name => abc, value => 123}))),
+
+     ?_assertEqual(
+        <<"abc{a=\"1.0\"} 123\n">>,
+        iolist_to_binary(nlv(#{name => abc,
+                               label => #{a => 1.0},
+                               value => 123}))),
+
+     ?_assertEqual(
+        <<"abc{a=\"b\"} 123\n">>,
+        iolist_to_binary(nlv(#{name => abc,
+                               label => #{a => b},
+                               value => 123}))),
+
+     ?_assertEqual(
+        <<"abc{a=\"def\"} 123\n">>,
+        iolist_to_binary(nlv(#{name => abc,
+                               label => #{a => "def"},
+                               value => 123}))),
+     ?_assertEqual(
+        <<"abc{a=\"1\"} 123\n">>,
+        iolist_to_binary(nlv(#{name => abc,
+                               label => #{a => 1},
+                               value => 123})))].
+-endif.

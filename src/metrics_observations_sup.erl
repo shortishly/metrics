@@ -13,16 +13,12 @@
 %% limitations under the License.
 
 
--module(metrics_sup).
+-module(metrics_observations_sup).
 
 
 -behaviour(supervisor).
 -export([init/1]).
 -export([start_link/0]).
--export([supervisor/1]).
--export([worker/1]).
--export([worker/2]).
--export([worker/3]).
 
 
 start_link() ->
@@ -34,17 +30,12 @@ init([]) ->
 
 
 children() ->
-    [worker(metrics), supervisor(metrics_observations_sup)].
-
-
-worker(M) ->
-    ?FUNCTION_NAME(M, []).
-
-worker(M, A) ->
-    ?FUNCTION_NAME(M, M, A).
-
-worker(Id, M, A) ->
-    #{id => Id, start => {M, start_link, A}}.
-
-supervisor(M) ->
-    #{id => M, start => {M, start_link, []}, type => supervisor}.
+    lists:map(
+      fun
+          (Type) ->
+              metrics_sup:worker(
+                Type,
+                metrics_observations,
+                [#{observation => Type, periodic => timer:minutes(1)}])
+      end,
+      [memory, processes, ports]).

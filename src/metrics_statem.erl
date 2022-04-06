@@ -13,38 +13,16 @@
 %% limitations under the License.
 
 
--module(metrics_sup).
+-module(metrics_statem).
 
 
--behaviour(supervisor).
--export([init/1]).
--export([start_link/0]).
--export([supervisor/1]).
--export([worker/1]).
--export([worker/2]).
--export([worker/3]).
+-export([generic_timeout/1]).
+-export([nei/1]).
 
 
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+generic_timeout(#{name := Name} = Arg) ->
+    {{timeout, Name}, metrics_config:timeout(Arg), Name}.
 
 
-init([]) ->
-    {ok, {#{}, children()}}.
-
-
-children() ->
-    [worker(metrics), supervisor(metrics_observations_sup)].
-
-
-worker(M) ->
-    ?FUNCTION_NAME(M, []).
-
-worker(M, A) ->
-    ?FUNCTION_NAME(M, M, A).
-
-worker(Id, M, A) ->
-    #{id => Id, start => {M, start_link, A}}.
-
-supervisor(M) ->
-    #{id => M, start => {M, start_link, []}, type => supervisor}.
+nei(Event) ->
+    {next_event, internal, Event}.

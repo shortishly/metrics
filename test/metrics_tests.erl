@@ -45,6 +45,16 @@ tests() ->
         end),
 
      ?_assertEqual(
+        6,
+        begin
+            metrics:gauge_add(N0LA),
+            metrics:gauge_add(N0LA),
+            metrics:gauge_put(N0LA#{value => 6}),
+
+            metrics:value(N0LA)
+        end),
+
+     ?_assertEqual(
         #{0.005 => 0,
           0.01 => 0,
           10 => 1,
