@@ -19,5 +19,7 @@
 -export([snake_case/1]).
 
 
+-spec snake_case([atom() | integer() | float() | string()]) -> atom().
+
 snake_case(Labels) ->
     list_to_atom(lists:concat(lists:join("_", Labels))).

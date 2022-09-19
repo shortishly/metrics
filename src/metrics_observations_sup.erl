@@ -26,7 +26,13 @@ start_link() ->
 
 
 init([]) ->
-    {ok, {#{}, children()}}.
+    case metrics_config:enabled(?MODULE) of
+        true ->
+            {ok, {#{}, children()}};
+
+        false ->
+            ignore
+    end.
 
 
 children() ->

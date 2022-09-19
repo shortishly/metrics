@@ -15,51 +15,39 @@
 
 -module(metrics).
 
+
 -export([all/0]).
--export([callback_mode/0]).
--export([counter_add/1]).
--export([domain/2]).
--export([exposition/1]).
--export([gauge_add/1]).
--export([gauge_put/1]).
--export([gauge_sub/1]).
--export([handle_event/4]).
+-export([counter/1]).
+-export([delete/1]).
+-export([float64/1]).
+-export([gauge/1]).
 -export([histogram/1]).
 -export([info/1]).
--export([init/1]).
--export([start_link/0]).
+-export([start/0]).
 -export([value/1]).
 -export([with_name/1]).
--include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
+
+-type histogram_value() :: #{number() := non_neg_integer(),
+                             count := non_neg_integer(),
+                             infinity := non_neg_integer(),
+                             sum := number()}.
+
+-type counter_value() :: integer().
+
+-type gauge_value() :: integer().
 
 
-domain(LogEvent, Extra) ->
-    erlang:display(#{log_event => LogEvent, extra => Extra}),
-    log.
-
-ji(Label) ->
-    maps:merge(
-      Label,
-      lists:foldl(
-        fun
-            (Name, A) ->
-                A#{Name => metrics_config:exposition(Name)}
-        end,
-        #{},
-        [job, instance])).
-
+-spec histogram(#{name := atom(),
+                  label := map(),
+                  value := number(),
+                  buckets => [number()]}) -> ok | no_return().
 
 histogram(#{name := Name, label := Label, value := Value} = Arg) ->
-    ?LOG_DEBUG(#{arg => Arg}),
+    NL = {Name, Label},
 
-    JI = ji(Label),
-
-    case ets:lookup(?MODULE, {Name, JI}) of
+    case ets:lookup(?MODULE, NL) of
         [{_, #{type := histogram,
                buckets := Buckets,
                sum := Sum,
@@ -68,7 +56,7 @@ histogram(#{name := Name, label := Label, value := Value} = Arg) ->
             ok = histogram_update(Counter, Buckets, Infinity, Sum, Value);
 
         [{_, _}] ->
-            error(type_mismatch);
+            error(type_mismatch, [Arg]);
 
         [] ->
             Buckets = lists:usort(maps:get(buckets, Arg)),
@@ -77,7 +65,7 @@ histogram(#{name := Name, label := Label, value := Value} = Arg) ->
             Sum = atomics:new(1, [{signed, false}]),
             ok = histogram_update(Counter, Buckets, Infinity, Sum, Value),
 
-            NameLabel = {{Name, JI},
+            Histogram = {NL,
                          #{type => histogram,
                            buckets => Buckets,
                            sum => Sum,
@@ -88,15 +76,18 @@ histogram(#{name := Name, label := Label, value := Value} = Arg) ->
               ?MODULE,
               case ets:lookup(?MODULE, Name) of
                   [{_, histogram}] ->
-                      NameLabel;
+                      Histogram;
 
                   [{_, _}] ->
-                      error(type_mismatch);
+                      error(type_mismatch, [Arg]);
 
                   [] ->
-                      [{Name, histogram}, NameLabel]
+                      [{Name, histogram}, Histogram]
               end) orelse ?FUNCTION_NAME(Arg)
-    end.
+    end;
+
+histogram(Arg) when not(is_map_key(label, Arg)) ->
+    ?FUNCTION_NAME(Arg#{label => #{}}).
 
 
 histogram_update(Counter, Buckets, Infinity, Sum, Value) ->
@@ -138,58 +129,120 @@ histogram_update_buckets(Counter, Buckets, Value) ->
         lists:zip(lists:seq(1, length(Buckets)), Buckets))).
 
 
-gauge_put(#{name := _, label := _, value := Value} = Arg) ->
+gauge(#{name := _, label := _, value := Value} = Arg) ->
     observation(Arg#{type => gauge,
                      op => put(#{ix => 1, value => Value})}),
     ok;
 
-gauge_put([Observation | Observations]) ->
-    ?FUNCTION_NAME(Observation),
-    ?FUNCTION_NAME(Observations);
+gauge(#{name := _, label := _, delta := Value} = Arg) ->
+    observation(Arg#{type => gauge,
+                     op => delta(#{ix => 1, value => Value})}),
+    ok;
 
-gauge_put([]) ->
+gauge(#{name := _, label := _} = Arg) ->
+    ?FUNCTION_NAME(Arg#{delta => 1});
+
+gauge(#{name := _} = Arg) when not(is_map_key(label, Arg)) ->
+    ?FUNCTION_NAME(Arg#{label => #{}});
+
+gauge([H | T]) ->
+    ok = ?FUNCTION_NAME(H),
+    ?FUNCTION_NAME(T);
+
+gauge([]) ->
     ok.
 
 
-gauge_add(#{name := _, label := _, value := Value} = Arg) ->
-    observation(Arg#{type => gauge,
-                     op => add(#{ix => 1, value => Value})}),
-    ok;
+counter(#{name := Name, label := Label, value := Value} = Arg) ->
+    case ets:lookup(?MODULE, {Name, Label}) of
+        [{_, #{type := counter, counter := Counter}}] ->
+            ?FUNCTION_NAME(Arg, Counter, atomics:get(Counter, 1));
 
-gauge_add(#{name := _, label := _} = Arg) ->
-    ?FUNCTION_NAME(Arg#{value => 1}).
+        [{_, #{type := _}}] ->
+            error(type_mismatch, [Arg]);
 
+        [] ->
+            ?FUNCTION_NAME(
+               maps:with(
+                 [name, label, delta],
+                 Arg#{delta => Value}))
+    end;
 
-gauge_sub(#{name := _, label := _, value := Value} = Arg) ->
-    observation(Arg#{type => gauge,
-                     op => sub(#{ix => 1, value => Value})}),
-    ok;
-
-gauge_sub(#{name := _, label := _} = Arg) ->
-    ?FUNCTION_NAME(Arg#{value => 1}).
-
-
-counter_add(#{name := _, label := _, value := Value} = Arg) ->
+counter(#{name := _, label := _, delta := Value} = Arg) ->
     observation(Arg#{type => counter,
                      op => add(#{ix => 1, value => Value})}),
     ok;
 
-counter_add(#{name := _, label := _} = Arg) ->
-    ?FUNCTION_NAME(Arg#{value => 1}).
+counter(#{name := _, label := _} = Arg) ->
+    ?FUNCTION_NAME(Arg#{delta => 1});
+
+counter(#{name := _} = Arg) when not(is_map_key(label, Arg)) ->
+    ?FUNCTION_NAME(Arg#{label => #{}});
+
+counter([H | T]) ->
+    ok = ?FUNCTION_NAME(H),
+    ?FUNCTION_NAME(T);
+
+counter([]) ->
+    ok.
+
+
+counter(#{value := Value} = Arg, Counter, Existing) when Value > Existing ->
+    case atomics:compare_exchange(
+           Counter,
+           1,
+           Existing,
+           Value) of
+
+        ok ->
+            ok;
+
+        Actual ->
+            ?FUNCTION_NAME(Arg, Counter, Actual)
+    end;
+
+counter(Arg, Counter, Existing) ->
+    error(badarg, [Arg, Counter, Existing]).
+
+
+delete(#{name := Name}) ->
+    ets:select_delete(
+      ?MODULE,
+      ets:fun2ms(
+        fun
+            ({{FoundName, _}, _}) ->
+                Name == FoundName;
+
+            ({FoundName, _}) ->
+                Name == FoundName
+        end)),
+    ok;
+
+delete(Arg) when not(is_map_key(label, Arg)) ->
+    ?FUNCTION_NAME(Arg#{label => #{}});
+
+delete([H | T]) ->
+    ?FUNCTION_NAME(H),
+    ?FUNCTION_NAME(T);
+
+delete([]) ->
+    ok.
+
+
 
 
 observation(#{name := Name,
               label := Label,
               type := Type,
               op := Op} = Arg) ->
-    JI = ji(Label),
+    NL = {Name, Label},
 
-    case ets:lookup(?MODULE, {Name, JI}) of
+    case ets:lookup(?MODULE, NL) of
         [{_, #{type := Type, counter := Counter}}] ->
             ok = Op(Counter);
 
         [{_, _}] ->
-            error(type_mismatch);
+            error(type_mismatch, [Arg]);
 
         [] ->
             Counter = counters:new(1, []),
@@ -199,14 +252,14 @@ observation(#{name := Name,
               ?MODULE,
               case ets:lookup(?MODULE, Name) of
                   [{_, Type}] ->
-                      {{Name, JI}, #{type => Type, counter => Counter}};
+                      {NL, #{type => Type, counter => Counter}};
 
                   [{_, _}] ->
-                      error(type_mismatch);
+                      error(type_mismatch, [Arg]);
 
                   [] ->
                       [{Name, Type},
-                       {{Name, JI}, #{type => Type, counter => Counter}}]
+                       {NL, #{type => Type, counter => Counter}}]
               end) orelse ?FUNCTION_NAME(Arg)
     end.
 
@@ -221,10 +274,16 @@ float64(I) when is_integer(I) ->
     F.
 
 
-value(#{name := Name, label := Label}) ->
-    JI = ji(Label),
+-type value() :: histogram_value()
+               | counter_value()
+               | gauge_value().
 
-    case ets:lookup(?MODULE, {Name, JI}) of
+-spec value(#{name := atom(), label => map()}) -> value().
+
+value(#{name := Name, label := Label} = Arg) ->
+    NL = {Name, Label},
+
+    case ets:lookup(?MODULE, NL) of
         [{_,
           #{type := histogram,
             buckets := Buckets,
@@ -248,23 +307,29 @@ value(#{name := Name, label := Label}) ->
             counters:get(Counter, 1);
 
         [] ->
-            error(badarg, [#{name => Name, label => JI}])
-    end.
+            error(badarg, [Arg])
+    end;
+
+value(Arg) when not(is_map_key(label, Arg)) ->
+    ?FUNCTION_NAME(Arg#{label => #{}}).
 
 
 info(#{name := _, label := _} = Arg) ->
-    op(Arg#{apply => fun (Counter) -> counters:info(Counter) end}).
+    op(Arg#{apply => fun (Counter) -> counters:info(Counter) end});
+
+info(Arg) when not(is_map_key(label, Arg)) ->
+    ?FUNCTION_NAME(Arg#{label => #{}}).
 
 
-op(#{name := Name, label := Label, apply := Apply}) ->
-    JI = ji(Label),
+op(#{name := Name, label := Label, apply := Apply} = Arg) ->
+    NL = {Name, Label},
 
-    case ets:lookup(?MODULE, {Name, JI}) of
+    case ets:lookup(?MODULE, NL) of
         [{_, #{counter := Counter}}] ->
             Apply(Counter);
 
         [] ->
-            error(badarg, [#{name => Name, label => Label}])
+            error(badarg, [Arg])
     end.
 
 
@@ -288,6 +353,13 @@ put(#{ix := Ix, value := Value}) ->
     end.
 
 
+delta(#{value := Value} = Arg) when Value > 0 ->
+    add(Arg);
+
+delta(#{value := Value} = Arg) ->
+    sub(Arg#{value := abs(Value)}).
+
+
 add(#{ix := Ix, value := Value}) ->
     fun
         (Counter) ->
@@ -306,6 +378,45 @@ all() ->
     ets:foldl(
       fun
           ({{Name, Label},
+            #{type := histogram,
+              buckets := Buckets,
+              sum := Sum,
+              infinity := Infinity,
+              counter := Counter}}, A0) ->
+
+              Count = PlusInf = counters:get(Infinity, 1),
+
+              lists:foldr(
+                fun
+                    ({Ix, LE}, A1) ->
+                        [#{name => Name,
+                           type => histogram,
+                           suffix => bucket,
+                           less_or_equal => LE,
+                           label => Label,
+                           value => counters:get(Counter, Ix)} | A1]
+                end,
+                [#{name => Name,
+                   type => histogram,
+                   suffix => bucket,
+                   less_or_equal => "+Inf",
+                   label => Label,
+                   value => PlusInf},
+
+                 #{name => Name,
+                   type => histogram,
+                   suffix => count,
+                   label => Label,
+                   value => Count},
+
+                 #{name => Name,
+                   type => histogram,
+                   suffix => sum,
+                   label => Label,
+                   value => float64(atomics:get(Sum, 1))} | A0],
+                lists:zip(lists:seq(1, length(Buckets)), Buckets));
+
+          ({{Name, Label},
             #{type := Type, counter := Counter}}, A) ->
               [#{name => Name,
                  label => Label,
@@ -319,167 +430,5 @@ all() ->
       ?MODULE).
 
 
-exposition(Type) ->
-    gen_statem:call(?MODULE, {?FUNCTION_NAME, Type}).
-
-
-start_link() ->
-    gen_statem:start_link({local, ?MODULE}, ?MODULE, [], []).
-
-
-init([]) ->
-    ?MODULE = ets:new(?MODULE, [ordered_set, named_table, public]),
-    {ok, ready, #{}, metrics_statem:nei(collect)}.
-
-
-callback_mode() ->
-    handle_event_function.
-
-
-handle_event({call, From}, {exposition, MediaType}, _, Data) ->
-    case Data of
-        #{MediaType := Representation} ->
-            {keep_state_and_data, {reply, From, Representation}};
-
-        #{} ->
-            {keep_state_and_data, {reply, From, {error, not_found}}}
-    end;
-
-handle_event(internal, collect, _, _) ->
-    {keep_state_and_data,
-     lists:foldl(
-       fun
-           (MediaType, A) ->
-               [metrics_statem:nei({collect, MediaType}) | A]
-       end,
-       [metrics_statem:generic_timeout(#{name => collect})],
-       media_types())};
-
-handle_event(internal, {collect, MediaType}, _, Data) ->
-    {keep_state, Data#{MediaType => as(MediaType)}};
-
-handle_event({timeout, _}, collect, _, _) ->
-    {keep_state_and_data, metrics_statem:nei(collect)}.
-
-
-media_types() ->
-    [<<"text/plain; version=0.0.4">>].
-
-
-as(<<"text/plain; version=0.0.4">>) ->
-    ets:foldl(
-      fun
-          ({{Name, Label},
-            #{type := histogram,
-              buckets := Buckets,
-              sum := Sum,
-              infinity := Infinity,
-              counter := Counter}},
-           A) ->
-              Count = PlusInf = counters:get(Infinity, 1),
-
-              [A,
-               lists:map(
-                 fun
-                     ({Ix, LE}) ->
-                         [nlv(#{name => Name,
-                                suffix => bucket,
-                                label => Label#{le => LE},
-                                value => counters:get(Counter, Ix)})]
-                 end,
-                 lists:zip(lists:seq(1, length(Buckets)), Buckets)),
-
-               nlv(#{name => Name,
-                     suffix => bucket,
-                     label => Label#{le => "+Inf"},
-                     value => PlusInf}),
-               nlv(#{name => Name,
-                     suffix => count,
-                     label => Label,
-                     value => Count}),
-               nlv(#{name => Name,
-                     suffix => sum,
-                     label => Label,
-                     value => float64(atomics:get(Sum, 1))})];
-
-
-          ({{Name, Label}, #{type := Type, counter := Counter}}, A)
-            when Type == counter;
-                 Type == gauge ->
-              [A, nlv(#{name => Name,
-                        label => Label,
-                        value => counters:get(Counter, 1)})];
-
-
-          ({Name, Type}, A) ->
-              [A, io_lib:format("# TYPE ~p ~p~n", [Name, Type])]
-      end,
-      [],
-      ?MODULE).
-
-
-nlv(#{name := Name, value := Value} = Arg) ->
-    [case maps:find(suffix, Arg) of
-         {ok, Suffix} ->
-             io_lib:format("~p_~p", [Name, Suffix]);
-
-         error ->
-             io_lib:format("~p", [Name])
-     end,
-     l(Arg),
-     " ",
-     io_lib:format("~p", [Value]),
-     "\n"].
-
-l(#{label := Label}) when map_size(Label) > 0 ->
-    ["{",
-     lists:join(
-       ",",
-       lists:map(
-         fun
-             ({K, V}) when is_list(V) ->
-                 io_lib:format("~p=\"~s\"", [K, V]);
-
-             ({K, V}) ->
-                 io_lib:format("~p=\"~p\"", [K, V])
-         end,
-         lists:sort(maps:to_list(Label)))),
-     "}"];
-
-l(_) ->
-    [].
-
-
--ifdef(TEST).
-nlv_test_() ->
-    [?_assertEqual(
-        <<"abc 123\n">>,
-        iolist_to_binary(nlv(#{name => abc, label => #{}, value => 123}))),
-
-     ?_assertEqual(
-        <<"abc 123\n">>,
-        iolist_to_binary(nlv(#{name => abc, value => 123}))),
-
-     ?_assertEqual(
-        <<"abc{a=\"1.0\"} 123\n">>,
-        iolist_to_binary(nlv(#{name => abc,
-                               label => #{a => 1.0},
-                               value => 123}))),
-
-     ?_assertEqual(
-        <<"abc{a=\"b\"} 123\n">>,
-        iolist_to_binary(nlv(#{name => abc,
-                               label => #{a => b},
-                               value => 123}))),
-
-     ?_assertEqual(
-        <<"abc{a=\"def\"} 123\n">>,
-        iolist_to_binary(nlv(#{name => abc,
-                               label => #{a => "def"},
-                               value => 123}))),
-     ?_assertEqual(
-        <<"abc{a=\"1\"} 123\n">>,
-        iolist_to_binary(nlv(#{name => abc,
-                               label => #{a => 1},
-                               value => 123})))].
--endif.
+start() ->
+    application:ensure_all_started(metrics).

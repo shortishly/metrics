@@ -30,11 +30,14 @@ init([#{} = Args]) ->
     {ok, ready, Args, metrics_statem:nei(collect)}.
 
 
-handle_event({timeout, _}, collect, _, #{observation := Type}) ->
-    observation(Type),
+handle_event({timeout, _}, collect, _, _) ->
     {keep_state_and_data, metrics_statem:nei(collect)};
 
-handle_event(internal, collect, _, #{periodic := Periodic}) ->
+handle_event(internal,
+             collect,
+             _,
+             #{observation := Type, periodic := Periodic}) ->
+    observation(Type),
     {keep_state_and_data, {{timeout, periodic}, Periodic, collect}}.
 
 
@@ -53,8 +56,13 @@ observation(processes = Type) ->
        lists:foldl(
          fun
              (Pid, A) ->
-                 {status, Status} = erlang:process_info(Pid, status),
-                 orddict:update_counter(Status, 1, A)
+                 case erlang:process_info(Pid, status) of
+                     {status, Status} ->
+                         orddict:update_counter(Status, 1, A);
+
+                     undefined ->
+                         A
+                 end
          end,
          [{total, length(Processes)}],
       Processes));
@@ -68,7 +76,7 @@ observation(Prefix, Type, Observations) ->
 
 
 observation(Name, Observations) ->
-    metrics:gauge_put(
+    metrics:gauge(
       lists:map(
         fun
             ({Key, Value}) ->

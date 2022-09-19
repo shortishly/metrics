@@ -18,31 +18,40 @@
 
 -behaviour(application).
 -export([prep_stop/1]).
--export([ensure_all_started/0]).
 -export([start/2]).
 -export([stop/1]).
 
 
-ensure_all_started() ->
-    application:ensure_all_started(metrics).
-
-
 start(_Type, _Args) ->
-    {ok, _} = cowboy:start_clear(
-                http,
-                [{port, 8080}],
-                #{env => #{dispatch => dispatch()}}),
-    metrics_sup:start_link().
+    _ = ets:new(metrics, [ordered_set, named_table, public]),
+
+    {ok, Sup} = metrics_sup:start_link(),
+
+    case metrics_config:enabled(http) of
+        false ->
+            {ok, Sup};
+
+        true ->
+            {ok, _} = cowboy:start_clear(
+                        http,
+                        [{port, metrics_config:http(port)}],
+                        #{env => #{dispatch => dispatch()}}),
+            {ok, Sup, [http]}
+    end.
 
 
 dispatch() ->
     cowboy_router:compile([{'_', [{"/metrics", metrics_exposition_h, []}]}]).
 
 
-prep_stop(State) ->
-    ok = cowboy:stop_listener(http),
-    State.
+prep_stop([]) ->
+    ok;
+
+prep_stop([Ref]) ->
+    ok = cowboy:stop_listener(Ref),
+    [].
 
 
 stop(_State) ->
+    ets:delete(metrics),
     ok.

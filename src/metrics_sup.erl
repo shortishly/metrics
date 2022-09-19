@@ -34,7 +34,7 @@ init([]) ->
 
 
 children() ->
-    [worker(metrics), supervisor(metrics_observations_sup)].
+    [worker(metrics_prom), supervisor(metrics_observations_sup)].
 
 
 worker(M) ->

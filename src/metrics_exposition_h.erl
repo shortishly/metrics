@@ -23,5 +23,5 @@ init(Req, Opts) ->
     MediaType = <<"text/plain; version=0.0.4">>,
     Headers = #{<<"content-type">> => MediaType},
     {ok,
-     cowboy_req:reply(200, Headers, metrics:exposition(MediaType), Req),
+     cowboy_req:reply(200, Headers, metrics_prom:exposition(MediaType), Req),
      Opts}.

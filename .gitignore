@@ -21,3 +21,4 @@ cover
 *#
 .#*
 test/*.beam
+recompile.log

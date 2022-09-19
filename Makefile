@@ -26,24 +26,34 @@ DEPS = \
 
 SHELL_OPTS = \
 	-config dev.config \
-	-s $(PROJECT)_app ensure_all_started \
+	-s $(PROJECT) \
 	-s sync
 
 SHELL_DEPS = \
 	sync
 
-BUILD_DEPS = elvis_mk
-
-DEP_PLUGINS = elvis_mk
-
-dep_elvis_mk = git https://github.com/inaka/elvis.mk.git 1.0.0
 dep_envy = git https://github.com/shortishly/envy.git
 
 dep_cowboy_commit = 2.9.0
-dep_envy_commit = 0.4.0
+dep_envy_commit = 0.5.0
 dep_recon_commit = 2.5.2
 
 
-include erlang.mk
+PLT_APPS = \
+	any \
+	asn1 \
+	compiler \
+	cowlib \
+	crypto \
+	inets \
+	mnesia \
+	public_key \
+	ranch \
+	runtime_tools \
+	ssl \
+	stdlib \
+	syntax_tools \
+	tools
 
-all:: elvis dialyze eunit
+
+include erlang.mk

@@ -20,185 +20,358 @@
 
 
 metric_test_() ->
-    {foreach, setup(), cleanup(), tests()}.
-
-tests() ->
     Name0 = abc,
     Name1 = cba,
     Name2 = cab,
     LabelA = #{a => 1},
     LabelB = #{b => 1},
 
-    N0LA = #{name => Name0, label => LabelA},
-    N1LA = #{name => Name1, label => LabelA},
-    N2LA = #{name => Name2, label => LabelA},
+    N0 = #{name => Name0},
+    N1 = #{name => Name1},
+    N2 = #{name => Name2},
 
-    N0LB = #{name => Name0, label => LabelB},
+    N0LA = N0#{label => LabelA},
+    N1LA = N1#{label => LabelA},
+    N2LA = N2#{label => LabelA},
 
-    [?_assertEqual(
-        2,
-        begin
-            metrics:gauge_add(N0LA),
-            metrics:gauge_add(N0LA),
+    N0LB = N0#{label => LabelB},
 
-            metrics:value(N0LA)
-        end),
+    {setup,
+     fun
+         () ->
+             {ok, _} = application:ensure_all_started(metrics)
+     end,
+     fun
+         (_) ->
+             application:stop(metrics)
+     end,
+     {foreach,
+      fun
+          () ->
+              nop
+      end,
+      fun
+          (_) ->
+              metrics:delete([N0, N1, N2])
+      end,
+      [?_assertEqual(
+          2,
+          begin
+              metrics:gauge(N0),
+              metrics:gauge(N0),
+              metrics:value(N0)
+          end),
 
-     ?_assertEqual(
-        6,
-        begin
-            metrics:gauge_add(N0LA),
-            metrics:gauge_add(N0LA),
-            metrics:gauge_put(N0LA#{value => 6}),
+       ?_assertError(
+          badarg,
+          begin
+              metrics:gauge(N0),
 
-            metrics:value(N0LA)
-        end),
+              metrics:gauge(N0LA),
+              metrics:delete(N0LA),
 
-     ?_assertEqual(
-        #{0.005 => 0,
-          0.01 => 0,
-          10 => 1,
-          count => 1,
-          infinity => 1,
-          sum => 6.0},
-        begin
-            metrics:histogram(
-              N0LA#{buckets => [0.005, 0.01, 10], value => 6}),
-            metrics:value(N0LA)
-        end),
+              metrics:value(N0)
+          end),
 
-     ?_assertEqual(
-        #{0.005 => 1,
-          0.01 => 1,
-          10 => 1,
-          count => 1,
-          infinity => 1,
-          sum => -1.1},
-        begin
-            metrics:histogram(
-              N0LA#{buckets => [0.005, 0.01, 10], value => -1.1}),
-            metrics:value(N0LA)
-        end),
+       ?_assertError(
+          badarg,
+          begin
+              metrics:gauge(N0LA),
 
-     ?_assertEqual(
-        #{0.005 => 0,
-          0.01 => 0,
-          10 => 0,
-          count => 1,
-          infinity => 1,
-          sum => 11.23},
-        begin
-            metrics:histogram(
-              N0LA#{buckets => [0.005, 0.01, 10], value => 11.23}),
-            metrics:value(N0LA)
-        end),
+              metrics:gauge(N0),
+              metrics:delete(N0),
 
-     ?_assertEqual(
-        #{0.005 => 1,
-          0.01 => 1,
-          10 => 1,
-          count => 2,
-          infinity => 2,
-          sum => 10.13},
-        begin
-            metrics:histogram(
-              N0LA#{buckets => [0.005, 0.01, 10], value => 11.23}),
-            metrics:histogram(N0LA#{value => -1.1}),
-            metrics:value(N0LA)
-        end),
+              metrics:value(N0LA)
+          end),
 
-     ?_assertEqual(
-        {3, 2, 1},
-        begin
-            metrics:gauge_add(N0LA#{value => 3}),
-            metrics:gauge_add(N1LA#{value => 2}),
-            metrics:gauge_add(N2LA#{value => 1}),
+       ?_assertError(
+          badarg,
+          begin
+              metrics:gauge(N0),
+              metrics:delete(N0),
 
-            {metrics:value(N0LA),
-             metrics:value(N1LA),
-             metrics:value(N2LA)}
-        end),
+              metrics:value(N0)
+          end),
 
-     ?_assertError(badarg, metrics:value(N0LA)),
+       ?_assertError(
+          badarg,
+          begin
+              metrics:counter(N0),
+              metrics:delete(N0),
 
-     ?_assertError(badarg, metrics:info(N0LA)),
+              metrics:value(N0)
+          end),
 
-     ?_assertMatch(
-        #{size := 1},
-        begin
-            metrics:gauge_add(N0LA),
-            metrics:info(N0LA)
-        end),
+       ?_assertEqual(
+          2,
+          begin
+              metrics:gauge(N0LA),
+              metrics:gauge(N0LA),
 
-     ?_assertMatch(
-        #{size := 1},
-        begin
-            metrics:counter_add(N0LA),
-            metrics:info(N0LA)
-        end),
+              metrics:value(N0LA)
+          end),
 
-     ?_assertError(
-        type_mismatch,
-        begin
-            metrics:gauge_add(N0LA),
-            metrics:counter_add(N0LA)
-        end),
+       ?_assertEqual(
+          6,
+          begin
+              metrics:gauge(N0),
+              metrics:gauge(N0),
+              metrics:gauge(N0#{value => 6}),
 
-     ?_assertError(
-        type_mismatch,
-        begin
-            metrics:gauge_add(N0LA),
-            metrics:counter_add(N0LB)
-        end),
+              metrics:value(N0)
+          end),
 
-     ?_assertError(
-        type_mismatch,
-        begin
-            metrics:counter_add(N0LA),
-            metrics:gauge_add(N0LA)
-        end),
+       ?_assertEqual(
+          6,
+          begin
+              metrics:gauge(N0LA),
+              metrics:gauge(N0LA),
+              metrics:gauge(N0LA#{value => 6}),
 
-     ?_assertError(
-        type_mismatch,
-        begin
-            metrics:counter_add(N0LA),
-            metrics:gauge_add(N0LB)
-        end),
+              metrics:value(N0LA)
+          end),
 
-     ?_assertEqual(
-        0,
-        begin
-            metrics:gauge_add(N0LA),
-            metrics:gauge_sub(N0LA),
+       ?_assertEqual(
+          #{0.005 => 0,
+            0.01 => 0,
+            10 => 1,
+            count => 1,
+            infinity => 1,
+            sum => 6.0},
+          begin
+              metrics:histogram(
+                N0#{buckets => [0.005, 0.01, 10], value => 6}),
+              metrics:value(N0)
+          end),
 
-            metrics:value(N0LA)
-        end),
+       ?_assertEqual(
+          #{0.005 => 0,
+            0.01 => 0,
+            10 => 1,
+            count => 1,
+            infinity => 1,
+            sum => 6.0},
+          begin
+              metrics:histogram(
+                N0LA#{buckets => [0.005, 0.01, 10], value => 6}),
+              metrics:value(N0LA)
+          end),
 
-     ?_assertEqual(
-        -1,
-        begin
-            metrics:gauge_sub(N0LA),
-            metrics:value(N0LA)
-        end),
+       ?_assertEqual(
+          #{0.005 => 1,
+            0.01 => 1,
+            10 => 1,
+            count => 1,
+            infinity => 1,
+            sum => -1.1},
+          begin
+              metrics:histogram(
+                N0LA#{buckets => [0.005, 0.01, 10], value => -1.1}),
+              metrics:value(N0LA)
+          end),
 
-     ?_assertEqual(
-        2,
-        begin
-            metrics:counter_add(N0LA),
-            metrics:counter_add(N0LA),
+       ?_assertEqual(
+          #{0.005 => 1,
+            0.01 => 1,
+            10 => 1,
+            count => 1,
+            infinity => 1,
+            sum => -1.1},
+          begin
+              metrics:histogram(
+                N0#{buckets => [0.005, 0.01, 10], value => -1.1}),
+              metrics:value(N0)
+          end),
 
-            metrics:value(N0LA)
-        end)].
+       ?_assertEqual(
+          #{0.005 => 0,
+            0.01 => 0,
+            10 => 0,
+            count => 1,
+            infinity => 1,
+            sum => 11.23},
+          begin
+              metrics:histogram(
+                N0LA#{buckets => [0.005, 0.01, 10], value => 11.23}),
+              metrics:value(N0LA)
+          end),
 
+       ?_assertEqual(
+          #{0.005 => 1,
+            0.01 => 1,
+            10 => 1,
+            count => 2,
+            infinity => 2,
+            sum => 10.13},
+          begin
+              metrics:histogram(
+                N0#{buckets => [0.005, 0.01, 10], value => 11.23}),
+              metrics:histogram(N0#{value => -1.1}),
+              metrics:value(N0)
+          end),
 
-setup() ->
-    fun () ->
-            {ok, _} = application:ensure_all_started(metrics)
-    end.
+       ?_assertEqual(
+          #{0.005 => 1,
+            0.01 => 1,
+            10 => 1,
+            count => 2,
+            infinity => 2,
+            sum => 10.13},
+          begin
+              metrics:histogram(
+                N0LA#{buckets => [0.005, 0.01, 10], value => 11.23}),
+              metrics:histogram(N0LA#{value => -1.1}),
+              metrics:value(N0LA)
+          end),
 
+       ?_assertEqual(
+          {3, 2, 1},
+          begin
+              metrics:gauge(N0#{value => 3}),
+              metrics:gauge(N1#{value => 2}),
+              metrics:gauge(N2#{value => 1}),
 
-cleanup() ->
-    fun
-        (_) ->
-            application:stop(metrics)
-    end.
+              {metrics:value(N0),
+               metrics:value(N1),
+               metrics:value(N2)}
+          end),
+
+       ?_assertEqual(
+          {3, 2, 1},
+          begin
+              metrics:gauge(N0LA#{value => 3}),
+              metrics:gauge(N1LA#{value => 2}),
+              metrics:gauge(N2LA#{value => 1}),
+
+              {metrics:value(N0LA),
+               metrics:value(N1LA),
+               metrics:value(N2LA)}
+          end),
+
+       ?_assertError(badarg, metrics:value(N0)),
+
+       ?_assertError(badarg, metrics:value(N0LA)),
+
+       ?_assertError(badarg, metrics:info(N0)),
+
+       ?_assertError(badarg, metrics:info(N0LA)),
+
+       ?_assertMatch(
+          #{size := 1},
+          begin
+              metrics:gauge(N0),
+              metrics:info(N0)
+          end),
+
+       ?_assertMatch(
+          #{size := 1},
+          begin
+              metrics:gauge(N0LA),
+              metrics:info(N0LA)
+          end),
+
+       ?_assertMatch(
+          #{size := 1},
+          begin
+              metrics:counter(N0),
+              metrics:info(N0)
+          end),
+
+       ?_assertMatch(
+          #{size := 1},
+          begin
+              metrics:counter(N0LA),
+              metrics:info(N0LA)
+          end),
+
+       ?_assertError(
+          type_mismatch,
+          begin
+              metrics:gauge(N0),
+              metrics:counter(N0)
+          end),
+
+       ?_assertError(
+          type_mismatch,
+          begin
+              metrics:gauge(N0LA),
+              metrics:counter(N0LA)
+          end),
+
+       ?_assertError(
+          type_mismatch,
+          begin
+              metrics:gauge(N0),
+              metrics:counter(N0LB)
+          end),
+
+       ?_assertError(
+          type_mismatch,
+          begin
+              metrics:gauge(N0LA),
+              metrics:counter(N0LB)
+          end),
+
+       ?_assertError(
+          type_mismatch,
+          begin
+              metrics:counter(N0LA),
+              metrics:gauge(N0LA)
+          end),
+
+       ?_assertError(
+          type_mismatch,
+          begin
+              metrics:counter(N0LA),
+              metrics:gauge(N0LB)
+          end),
+
+       ?_assertEqual(
+          0,
+          begin
+              metrics:gauge(N0#{delta => 1}),
+              metrics:gauge(N0#{delta => -1}),
+
+              metrics:value(N0)
+          end),
+
+       ?_assertEqual(
+          0,
+          begin
+              metrics:gauge(N0LA#{delta => 1}),
+              metrics:gauge(N0LA#{delta => -1}),
+
+              metrics:value(N0LA)
+          end),
+
+       ?_assertEqual(
+          -1,
+          begin
+              metrics:gauge(N0#{delta => -1}),
+              metrics:value(N0)
+          end),
+
+       ?_assertEqual(
+          -1,
+          begin
+              metrics:gauge(N0LA#{delta => -1}),
+              metrics:value(N0LA)
+          end),
+
+       ?_assertEqual(
+          2,
+          begin
+              metrics:counter(N0),
+              metrics:counter(N0),
+
+              metrics:value(N0)
+          end),
+
+       ?_assertEqual(
+          2,
+          begin
+              metrics:counter(N0LA),
+              metrics:counter(N0LA),
+
+              metrics:value(N0LA)
+          end)]}}.
