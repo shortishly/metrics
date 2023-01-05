@@ -26,6 +26,7 @@
 -export([start/0]).
 -export([value/1]).
 -export([with_name/1]).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
 
@@ -227,8 +228,6 @@ delete([H | T]) ->
 
 delete([]) ->
     ok.
-
-
 
 
 observation(#{name := Name,

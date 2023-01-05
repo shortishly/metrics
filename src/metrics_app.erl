@@ -33,10 +33,10 @@ start(_Type, _Args) ->
 
         true ->
             {ok, _} = cowboy:start_clear(
-                        http,
+                        ?MODULE,
                         [{port, metrics_config:http(port)}],
                         #{env => #{dispatch => dispatch()}}),
-            {ok, Sup, [http]}
+            {ok, Sup, [?MODULE]}
     end.
 
 
