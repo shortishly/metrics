@@ -64,12 +64,3 @@ ok
                    label => #{channel => desktop}}).
 56
 ```
-
-
-## Counters
-
-To set the value of `counter` use:
-
-```erlang
-
-```
