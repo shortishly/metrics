@@ -162,7 +162,7 @@ l(#{label := Label}) ->
        ",",
        lists:map(
          fun
-             ({K, V}) when is_list(V) ->
+             ({K, V}) when is_list(V); is_binary(V) ->
                  io_lib:format("~p=\"~s\"", [K, V]);
 
              ({K, V}) ->

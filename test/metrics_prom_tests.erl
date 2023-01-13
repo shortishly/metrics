@@ -61,6 +61,13 @@ nlv_test_() ->
            metrics_prom:nlv(#{name => abc,
                               label => #{a => "def"},
                               value => 123}))),
+
+      ?_assertEqual(
+         <<"abc{a=\"def\",instance=\"instance\",job=\"job\"} 123\n">>,
+         iolist_to_binary(
+           metrics_prom:nlv(#{name => abc,
+                              label => #{a => <<"def">>},
+                              value => 123}))),
       ?_assertEqual(
          <<"abc{a=\"1\",instance=\"instance\",job=\"job\"} 123\n">>,
          iolist_to_binary(
