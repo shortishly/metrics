@@ -56,4 +56,6 @@ PLT_APPS = \
 	tools
 
 
-include erlang.mk
+include $(if $(ERLANG_MK_FILENAME),$(ERLANG_MK_FILENAME),erlang.mk)
+
+app:: rebar.config
