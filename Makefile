@@ -35,7 +35,7 @@ SHELL_DEPS = \
 dep_envy = git https://github.com/shortishly/envy.git
 
 dep_cowboy_commit = 2.9.0
-dep_envy_commit = 0.5.0
+dep_envy_commit = 0.8.0
 dep_recon_commit = 2.5.2
 
 
@@ -56,4 +56,6 @@ PLT_APPS = \
 	tools
 
 
-include erlang.mk
+include $(if $(ERLANG_MK_FILENAME),$(ERLANG_MK_FILENAME),erlang.mk)
+
+app:: rebar.config
