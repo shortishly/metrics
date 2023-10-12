@@ -19,41 +19,37 @@ PROJECT_VERSION = 0.1.0
 
 RELX_TAR = 0
 
-DEPS = \
-	cowboy \
-	envy \
-	recon
+DEPS += cowboy
+DEPS += envy
+DEPS += recon
 
-SHELL_OPTS = \
-	-config dev.config \
-	-s $(PROJECT) \
-	-s sync
+SHELL_OPTS += -config dev.config
+SHELL_OPTS += -s $(PROJECT)
+SHELL_OPTS += -s sync
 
-SHELL_DEPS = \
-	sync
+SHELL_DEPS += sync
 
 dep_envy = git https://github.com/shortishly/envy.git
 
-dep_cowboy_commit = 2.9.0
+dep_cowboy_commit = 2.10.0
 dep_envy_commit = 0.8.0
 dep_recon_commit = 2.5.2
 
 
-PLT_APPS = \
-	any \
-	asn1 \
-	compiler \
-	cowlib \
-	crypto \
-	inets \
-	mnesia \
-	public_key \
-	ranch \
-	runtime_tools \
-	ssl \
-	stdlib \
-	syntax_tools \
-	tools
+PLT_APPS += any
+PLT_APPS += asn1
+PLT_APPS += compiler
+PLT_APPS += cowlib
+PLT_APPS += crypto
+PLT_APPS += inets
+PLT_APPS += mnesia
+PLT_APPS += public_key
+PLT_APPS += ranch
+PLT_APPS += runtime_tools
+PLT_APPS += ssl
+PLT_APPS += stdlib
+PLT_APPS += syntax_tools
+PLT_APPS += tools
 
 
 include $(if $(ERLANG_MK_FILENAME),$(ERLANG_MK_FILENAME),erlang.mk)
