@@ -1,3 +1,20 @@
+<br>
+
+<p align="center">
+    <a href="https://shortishly.github.io/metrics/cover/">
+      <img alt="Test Coverage" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fshortishly.github.io%2Fmetrics%2Fcover%2Fcoverage.json&query=%24.total&suffix=%25&style=flat-square&label=Test%20Coverage&color=green">
+    </a>
+    <a href="https://shortishly.github.io/metrics/edoc/">
+      <img alt="edoc" src="https://img.shields.io/badge/Documentation-edoc-green?style=flat-square">
+    </a>
+    <a href="https://erlang.org/">
+      <img alt="Erlang/OTP" src="https://img.shields.io/badge/Erlang%2FOTP%2B-green?style=flat-square">
+    </a>
+    <a href="https://www.apache.org/licenses/LICENSE-2.0">
+      <img alt="Apache-2.0" src="https://img.shields.io/github/license/shortishly/metrics?style=flat-square">
+    </a>
+</p>
+
 # Metrics
 
 ![main](https://github.com/shortishly/metrics/actions/workflows/main.yml/badge.svg)

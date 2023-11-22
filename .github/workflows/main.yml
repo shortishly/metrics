@@ -11,7 +11,9 @@ jobs:
   build:
     strategy:
       matrix:
-        otp: [25, 26]
+        otp:
+          - 25
+          - 26
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -19,3 +21,24 @@ jobs:
         with:
           otp-version: ${{matrix.otp}}
       - run: make all dialyze eunit
+  site:
+    needs: build
+    strategy:
+      matrix:
+        otp:
+          - 26
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{matrix.otp}}
+      - run: make tests edoc
+      - uses: shortishly/coverdata@main
+        with:
+          input: _site/cover
+          output: _site/cover/coverage.json
+          otp-version: ${{matrix.otp}}
+      - uses: actions/upload-pages-artifact@v1
+        with:
+          path: _site

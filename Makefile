@@ -29,12 +29,11 @@ SHELL_OPTS += -s sync
 
 SHELL_DEPS += sync
 
-dep_envy = git https://github.com/shortishly/envy.git
+dep_envy = $(if $(DEP_LN),ln ../../envy,git https://github.com/shortishly/envy.git)
 
 dep_cowboy_commit = 2.10.0
-dep_envy_commit = 0.8.0
-dep_recon_commit = 2.5.2
-
+dep_envy_commit = 0.9.2
+dep_recon_commit = 2.5.4
 
 PLT_APPS += any
 PLT_APPS += asn1
