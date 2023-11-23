@@ -15,7 +15,7 @@
 #
 PROJECT = metrics
 PROJECT_DESCRIPTION = Metrics
-PROJECT_VERSION = 0.1.0
+PROJECT_VERSION = ${shell git describe --tags}
 
 COVER = 1
 
