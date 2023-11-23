@@ -17,7 +17,11 @@ PROJECT = metrics
 PROJECT_DESCRIPTION = Metrics
 PROJECT_VERSION = 0.1.0
 
-RELX_TAR = 0
+COVER = 1
+
+COVER_REPORT_DIR = _site/cover
+CT_LOGS_DIR = _site/ct
+EDOC_OPTS = {preprocess, true}, {dir, "_site/edoc"}
 
 DEPS += cowboy
 DEPS += envy
